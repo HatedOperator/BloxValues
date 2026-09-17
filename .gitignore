@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data (guild settings, watcher state)
+data/
+
+# Scratch / tooling
+scratch/
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db

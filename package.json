@@ -1,0 +1,32 @@
+{
+  "name": "bloxvalues",
+  "version": "1.0.0",
+  "description": "Discord bot for Blox Fruits item values and live dealer stock updates, powered by bloxfruitsvalues.com",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HatedOperator/BloxValues.git"
+  },
+  "keywords": [
+    "discord",
+    "discordjs",
+    "blox-fruits",
+    "roblox",
+    "values",
+    "stock"
+  ],
+  "author": "HatedOperator",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
