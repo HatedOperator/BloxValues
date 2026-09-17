@@ -9,10 +9,10 @@ Data comes from the public community site [bloxfruitsvalues.com](https://bloxfru
 - **`/value item`** — value, permanent value, demand, trend, dealer prices and best-use info for any fruit, gamepass or limited item (with autocomplete).
 - **`/values category`** — paginated value list for Fruits, Gamepasses, Limiteds or everything.
 - **`/stock`** — current Normal & Mirage dealer stock with reset countdowns.
-- **`/setstockchannel`** — post every stock rotation automatically into a channel (per server).
+- **`/stocksettings`** — configure automatic stock updates per server (channel, mention role, check interval, startup post). Needs **Manage Server**.
 - **`/help`** — quick overview.
 
-Stock rotations (Normal every 4h, Mirage every 2h) are detected by polling and posted automatically — with fruit values, demand, trends and images in rich embeds.
+Stock rotations (Normal every 4h, Mirage every 2h) are detected automatically and posted into each server's configured channel — with fruit values, demand, trends and images in rich embeds. Commands are registered globally, so the bot works in any server that invites it.
 
 ## Setup
 
@@ -38,23 +38,19 @@ Fill in `.env`:
 | --- | --- | --- |
 | `DISCORD_TOKEN` | ✅ | Bot token |
 | `CLIENT_ID` | ✅ | Application ID |
-| `STOCK_CHANNEL_ID` | ➖ | Channel ID for automatic stock updates |
-| `STOCK_MENTION_ROLE_ID` | ➖ | Role to ping when stock rotates |
-| `GUILD_ID` | ➖ | Register commands instantly to one server instead of globally |
-| `STOCK_POLL_SECONDS` | ➖ | Stock poll interval (default `60`, min `15`) |
-| `POST_ON_STARTUP` | ➖ | Post current stock when the bot boots (default `true`) |
 | `EMBED_COLOR` | ➖ | Fallback embed accent color |
+| `DATA_DIR` | ➖ | Data directory override (defaults to `<repo>/data`) |
 
-> Tip: to get a channel/role ID, enable **Developer Mode** in Discord (Settings → Advanced), then right-click the channel/role → **Copy ID**.
+All stock-update settings (channel, mention role, check interval, post-on-startup) are configured **per server in Discord** with `/stocksettings` — no environment variables needed.
 
 ### 3. Register commands & run
 
 ```bash
-npm run deploy   # register slash commands (once, and after adding new ones)
+npm run deploy   # register slash commands globally (once, and after adding new ones)
 npm start        # start the bot
 ```
 
-Per-server stock channels can also be managed in Discord with `/setstockchannel` (needs **Manage Server**).
+Each server then configures its own updates with `/stocksettings set channel:#your-channel [mention_role:@role] [poll_seconds:60] [post_on_startup:true]`, checks them with `/stocksettings view`, and disables them with `/stocksettings reset`.
 
 ## Deploying to Railway
 
@@ -64,8 +60,8 @@ The repo is Railway-ready (`railway.json` sets the start command, and slash comm
 2. In the service → **Variables**, add:
    - `DISCORD_TOKEN` (required)
    - `CLIENT_ID` (required)
-   - `STOCK_CHANNEL_ID`, `STOCK_MENTION_ROLE_ID`, `GUILD_ID`, `STOCK_POLL_SECONDS`, `POST_ON_STARTUP` as needed (see the table above)
-3. *(Recommended)* Attach a **Volume** to the service and mount it at `/data`, then set `DATA_DIR=/data`. This persists per-server `/setstockchannel` settings and the watcher state across deploys. Without a volume the bot still works — it just re-posts the current stock once after every redeploy.
+   - `EMBED_COLOR` / `DATA_DIR` if you want to customize (see the table above)
+3. *(Recommended)* Attach a **Volume** to the service and mount it at `/data`, then set `DATA_DIR=/data`. This persists per-server `/stocksettings` configurations and the watcher state across deploys. Without a volume the bot still works — servers just get a fresh stock post after every redeploy.
 4. Railway auto-detects Node (Nixpacks), runs `npm install`, and starts the bot with `npm run deploy; npm start`. If the process crashes, Railway restarts it automatically.
 
 ## Running with Docker
@@ -80,13 +76,13 @@ docker run -d --env-file .env -v bloxvalues-data:/app/data --name bloxvalues blo
 ```
 src/
 ├── index.js             # client, interaction routing, watcher startup
-├── deploy-commands.js   # slash-command registration script
+├── deploy-commands.js   # global slash-command registration script
 ├── config.js            # .env loading & validation
 ├── api.js               # Blox Fruits data client (values + stock, cached)
 ├── embeds.js            # stock embed builders
 ├── format.js            # value/demand/trend/rarity formatting
-├── store.js             # JSON persistence (guild settings, watcher state)
-├── watcher.js           # rotation detection + auto-posting
+├── store.js             # JSON persistence (per-guild settings, watcher state)
+├── watcher.js           # multi-guild rotation detection + delivery
 └── commands/            # one file per slash command
 ```
 

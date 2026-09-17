@@ -1,9 +1,8 @@
 'use strict';
 
 /**
- * Registers slash commands with Discord.
- * With GUILD_ID set → instant update in that guild; otherwise global
- * (propagates within ~1 hour).
+ * Registers slash commands globally with Discord (public bot — no guild
+ * scoping). Global commands propagate within ~1 hour; re-running is safe.
  */
 
 const fs = require('node:fs');
@@ -29,17 +28,9 @@ const rest = new REST().setToken(config.token);
 
 (async () => {
   try {
-    if (config.guildId) {
-      console.log(`[deploy] refreshing ${commands.length} guild commands in ${config.guildId}…`);
-      await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), {
-        body: commands,
-      });
-      console.log('[deploy] done — commands should appear immediately.');
-    } else {
-      console.log(`[deploy] refreshing ${commands.length} global commands…`);
-      await rest.put(Routes.applicationCommands(config.clientId), { body: commands });
-      console.log('[deploy] done — global commands can take up to an hour to appear.');
-    }
+    console.log(`[deploy] refreshing ${commands.length} global commands…`);
+    await rest.put(Routes.applicationCommands(config.clientId), { body: commands });
+    console.log('[deploy] done — global commands can take up to an hour to appear everywhere.');
   } catch (error) {
     console.error('[deploy] failed:', error);
     process.exitCode = 1;

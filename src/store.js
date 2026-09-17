@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-/** Tiny JSON file store for guild settings and watcher state. */
+/** Tiny JSON file store. */
 class JsonStore {
   constructor(file) {
     this.file = file;
@@ -41,46 +41,82 @@ class JsonStore {
   }
 }
 
-/** guildId → channelId for per-server stock update channels. */
+const GUILD_DEFAULTS = Object.freeze({
+  channelId: null,
+  mentionRoleId: null,
+  pollSeconds: 60,
+  postOnStartup: true,
+});
+
+/**
+ * Per-guild stock update configuration, managed in Discord via /stocksettings.
+ * Migrates the old `{ "guild:<id>": "<channelId>" }` shape automatically.
+ */
 class GuildSettings {
   constructor(dataDir) {
     this.store = new JsonStore(path.join(dataDir, 'guild-settings.json'));
+    this.#migrate();
   }
 
-  getStockChannel(guildId) {
-    return this.store.get(`guild:${guildId}`);
+  #migrate() {
+    for (const [key, value] of Object.entries({ ...this.store.data })) {
+      if (key.startsWith('guild:') && typeof value === 'string') {
+        this.store.delete(key);
+        this.store.set(key.slice(6), { ...GUILD_DEFAULTS, channelId: value });
+      }
+    }
   }
 
-  setStockChannel(guildId, channelId) {
-    this.store.set(`guild:${guildId}`, channelId);
+  /** Effective settings for a guild (defaults merged in). */
+  get(guildId) {
+    const saved = this.store.get(guildId, {});
+    return { ...GUILD_DEFAULTS, ...saved };
   }
 
-  clearStockChannel(guildId) {
-    this.store.delete(`guild:${guildId}`);
+  /** Merge a partial update (only provided fields change). */
+  update(guildId, patch) {
+    this.store.set(guildId, { ...this.get(guildId), ...patch });
   }
 
-  allStockChannels() {
+  reset(guildId) {
+    this.store.delete(guildId);
+  }
+
+  /** All configured guilds: { guildId: settings }. */
+  all() {
     const out = {};
-    for (const [key, value] of Object.entries(this.store.data)) {
-      if (key.startsWith('guild:')) out[key.slice(6)] = value;
+    for (const [guildId, saved] of Object.entries(this.store.data)) {
+      if (saved && typeof saved === 'object' && saved.channelId) {
+        out[guildId] = { ...GUILD_DEFAULTS, ...saved };
+      }
     }
     return out;
   }
 }
 
-/** Last-posted stock signature, so restarts don't double-post a rotation. */
+const WATCHER_DEFAULTS = Object.freeze({
+  signature: null, // last stock rotation delivered to this guild
+  at: 0, // epoch ms of that delivery
+  lastAttempt: 0, // epoch ms of last failed attempt (backoff)
+});
+
+/** Per-guild watcher progress, so restarts don't double-post rotations. */
 class WatcherState {
   constructor(dataDir) {
     this.store = new JsonStore(path.join(dataDir, 'watcher-state.json'));
   }
 
-  getLastSignature() {
-    return this.store.get('lastSignature');
+  getGuild(guildId) {
+    return { ...WATCHER_DEFAULTS, ...this.store.get(guildId, {}) };
   }
 
-  setLastSignature(sig) {
-    this.store.set('lastSignature', sig);
+  setGuild(guildId, patch) {
+    this.store.set(guildId, { ...this.getGuild(guildId), ...patch });
+  }
+
+  resetGuild(guildId) {
+    this.store.delete(guildId);
   }
 }
 
-module.exports = { JsonStore, GuildSettings, WatcherState };
+module.exports = { JsonStore, GuildSettings, WatcherState, GUILD_DEFAULTS };

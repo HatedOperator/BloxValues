@@ -1,13 +1,17 @@
 'use strict';
 
 /**
- * Stock watcher: polls the stock page, detects rotations, and posts the new
- * Normal/Mirage stock into every configured channel exactly once per rotation.
+ * Stock watcher (multi-guild): polls the stock page, detects rotations, and
+ * delivers each rotation exactly once to every guild configured with
+ * /stocksettings — respecting each guild's own poll interval and mention role.
  */
 
-const { ChannelType, PermissionFlagsBits } = require('discord.js');
+const { PermissionFlagsBits } = require('discord.js');
 const api = require('./api');
 const { buildStockEmbeds } = require('./embeds');
+
+const SWEEP_MS = 30_000; // how often we check for new rotations
+const RETRY_BACKOFF_MS = 2 * 60_000; // min wait between failed delivery attempts
 
 /** Rotation identity: side reset windows + which fruits are up. */
 function stockSignature(stock) {
@@ -19,60 +23,31 @@ function stockSignature(stock) {
   ]);
 }
 
-function collectChannels(client, config, guildSettings) {
-  const targets = new Map(); // channelId -> reason
-  if (config.stockChannelId) targets.set(config.stockChannelId, 'STOCK_CHANNEL_ID');
-  for (const [guildId, channelId] of Object.entries(guildSettings.allStockChannels())) {
-    targets.set(channelId, `guild ${guildId} (/setstockchannel)`);
+async function deliver(client, settings, stock) {
+  const channel = client.channels.cache.get(settings.channelId);
+  if (!channel) {
+    console.warn(`[watcher] channel ${settings.channelId} not found — remove it with /stocksettings reset`);
+    return false;
+  }
+  if (
+    !channel
+      .permissionsFor(channel.guild?.members?.me)
+      ?.has(PermissionFlagsBits.SendMessages | PermissionFlagsBits.EmbedLinks | PermissionFlagsBits.ViewChannel)
+  ) {
+    console.warn(`[watcher] missing Send Messages/Embed Links in #${channel.name} (${channel.guildId})`);
+    return false;
   }
 
-  const channels = [];
-  for (const [channelId, reason] of targets) {
-    const channel = client.channels.cache.get(channelId);
-    if (!channel) {
-      console.warn(`[watcher] channel ${channelId} (${reason}) not found — skipped`);
-      continue;
-    }
-    if (
-      !channel
-        .permissionsFor(channel.guild.members.me)
-        ?.has(PermissionFlagsBits.SendMessages | PermissionFlagsBits.EmbedLinks | PermissionFlagsBits.ViewChannel)
-    ) {
-      console.warn(`[watcher] missing Send Messages/Embed Links in #${channel.name} — skipped`);
-      continue;
-    }
-    channels.push({ channel, reason });
-  }
-  return channels;
-}
-
-async function postStock(client, ctx, stock, { isStartup }) {
-  const channels = collectChannels(client, ctx.config, ctx.guildSettings);
-  if (!channels.length) {
-    console.warn('[watcher] stock rotated but no valid target channels are configured');
-    return;
-  }
-
-  const embeds = buildStockEmbeds(stock, {
-    footerExtra: isStartup ? 'Live — new rotations post automatically' : 'New rotation',
+  const content = settings.mentionRoleId ? `<@&${settings.mentionRoleId}>` : undefined;
+  await channel.send({
+    content,
+    embeds: buildStockEmbeds(stock, { footerExtra: 'New rotation' }),
+    allowedMentions: { parse: settings.mentionRoleId ? ['roles'] : [] },
   });
-  const content = ctx.config.stockMentionRoleId ? `<@&${ctx.config.stockMentionRoleId}>` : undefined;
-
-  let posted = 0;
-  for (const { channel } of channels) {
-    try {
-      await channel.send({ content, embeds, allowedMentions: { parse: ctx.config.stockMentionRoleId ? ['roles'] : [] } });
-      posted++;
-    } catch (error) {
-      console.error(`[watcher] failed to post in #${channel.name} (${channel.id}): ${error.message}`);
-    }
-  }
-  console.log(
-    `[watcher] ${isStartup ? 'startup snapshot' : 'rotation'} posted to ${posted}/${channels.length} channel(s)`,
-  );
+  return true;
 }
 
-async function tick(client, ctx, { firstRun = false } = {}) {
+async function sweep(client, ctx) {
   let stock;
   try {
     stock = await api.fetchStock({ force: true });
@@ -80,32 +55,47 @@ async function tick(client, ctx, { firstRun = false } = {}) {
     console.error(`[watcher] stock fetch failed: ${error.message}`);
     return;
   }
-
-  if (stock.stale) {
-    console.warn('[watcher] upstream reports stale data — waiting for next poll');
-    return;
-  }
+  if (stock.stale) return; // upstream not confident yet — try next sweep
 
   const signature = stockSignature(stock);
-  if (signature === ctx.watcherState.getLastSignature()) return; // nothing new
+  const now = Date.now();
+  const configs = ctx.guildSettings.all();
 
-  const isStartup = firstRun && !ctx.watcherState.getLastSignature();
-  ctx.watcherState.setLastSignature(signature);
+  for (const [guildId, settings] of Object.entries(configs)) {
+    const state = ctx.watcherState.getGuild(guildId);
+    const known = state.signature !== null;
 
-  if (firstRun && !isStartup && !ctx.config.postOnStartup) {
-    console.log('[watcher] caught up silently (POST_ON_STARTUP=false)');
-    return;
-  }
-  if (!firstRun || isStartup || ctx.config.postOnStartup) {
-    await postStock(client, ctx, stock, { isStartup: firstRun });
+    if (known && state.signature === signature) continue; // already delivered
+
+    // First time we see this guild: either post now or silently catch up
+    if (!known && !settings.postOnStartup) {
+      ctx.watcherState.setGuild(guildId, { signature, at: now });
+      continue;
+    }
+
+    if (now - (state.at ?? 0) < settings.pollSeconds * 1000) continue; // not due yet
+    if (state.lastAttempt && now - state.lastAttempt < RETRY_BACKOFF_MS) continue; // backing off
+
+    try {
+      const sent = await deliver(client, settings, stock);
+      if (sent) {
+        ctx.watcherState.setGuild(guildId, { signature, at: Date.now(), lastAttempt: 0 });
+        console.log(`[watcher] rotation delivered to guild ${guildId} (#${settings.channelId})`);
+      } else {
+        ctx.watcherState.setGuild(guildId, { lastAttempt: now });
+      }
+    } catch (error) {
+      console.error(`[watcher] delivery to guild ${guildId} failed: ${error.message}`);
+      ctx.watcherState.setGuild(guildId, { lastAttempt: now });
+    }
   }
 }
 
 function startStockWatcher(client, ctx) {
-  const run = (opts) => tick(client, ctx, opts).catch((e) => console.error('[watcher]', e));
-  console.log(`[watcher] started — polling every ${ctx.config.pollSeconds}s`);
-  run({ firstRun: true });
-  const timer = setInterval(() => run({}), ctx.config.pollSeconds * 1000);
+  const run = () => sweep(client, ctx).catch((e) => console.error('[watcher]', e));
+  console.log(`[watcher] started — checking for rotations every ${SWEEP_MS / 1000}s`);
+  run();
+  const timer = setInterval(run, SWEEP_MS);
   timer.unref?.();
   return timer;
 }
