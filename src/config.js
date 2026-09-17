@@ -26,7 +26,10 @@ const config = {
   pollSeconds: Math.max(15, intEnv('STOCK_POLL_SECONDS', 60)),
   postOnStartup: boolEnv('POST_ON_STARTUP', true),
   embedColor: intEnv('EMBED_COLOR', 0x2b2d31) || 0x2b2d31,
-  dataDir: path.join(__dirname, '..', 'data'),
+  // PaaS-friendly override (e.g. a Railway volume mount); defaults to <repo>/data
+  dataDir: process.env.DATA_DIR
+    ? path.resolve(process.env.DATA_DIR)
+    : path.join(__dirname, '..', 'data'),
 };
 
 function validate(required = true) {

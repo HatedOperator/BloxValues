@@ -56,6 +56,18 @@ npm start        # start the bot
 
 Per-server stock channels can also be managed in Discord with `/setstockchannel` (needs **Manage Server**).
 
+## Deploying to Railway
+
+The repo is Railway-ready (`railway.json` sets the start command, and slash commands are re-registered automatically on every deploy — no manual `npm run deploy` needed).
+
+1. Push the repo to GitHub, then in [Railway](https://railway.app) → **New Project** → **Deploy from GitHub repo** → pick `HatedOperator/BloxValues`.
+2. In the service → **Variables**, add:
+   - `DISCORD_TOKEN` (required)
+   - `CLIENT_ID` (required)
+   - `STOCK_CHANNEL_ID`, `STOCK_MENTION_ROLE_ID`, `GUILD_ID`, `STOCK_POLL_SECONDS`, `POST_ON_STARTUP` as needed (see the table above)
+3. *(Recommended)* Attach a **Volume** to the service and mount it at `/data`, then set `DATA_DIR=/data`. This persists per-server `/setstockchannel` settings and the watcher state across deploys. Without a volume the bot still works — it just re-posts the current stock once after every redeploy.
+4. Railway auto-detects Node (Nixpacks), runs `npm install`, and starts the bot with `npm run deploy; npm start`. If the process crashes, Railway restarts it automatically.
+
 ## Running with Docker
 
 ```bash
