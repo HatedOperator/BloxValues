@@ -63,8 +63,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   } catch (error) {
     console.error(`[interaction] ${interaction.id} failed:`, error);
+    // Data/network issues are safe to surface (helps debugging bad hosts/IP blocks);
+    // anything else stays generic on a public bot.
+    const api = require('./api');
+    const detail = error instanceof api.ApiError ? ` (${error.message})` : '';
     const reply = {
-      content: '❌ Something went wrong while handling that — try again in a moment.',
+      content: `❌ Something went wrong while handling that — try again in a moment.${detail}`,
       ephemeral: true,
     };
     if (interaction.isRepliable()) {

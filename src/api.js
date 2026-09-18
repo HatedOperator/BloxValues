@@ -13,8 +13,15 @@
 const VALUES_URL = 'https://bloxfruitsvalues.com/api/v1/values';
 const STOCK_URL = 'https://bloxfruitsvalues.com/stock';
 const SITE_BASE = 'https://bloxfruitsvalues.com';
+// The site is behind Cloudflare, which challenges obvious bot user-agents
+// (especially from datacenter IPs like Railway's) — send browser-like headers.
 const USER_AGENT =
-  'BloxValues-DiscordBot/1.0 (+https://github.com/HatedOperator/BloxValues)';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const REQUEST_HEADERS = {
+  'user-agent': USER_AGENT,
+  accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+  'accept-language': 'en-US,en;q=0.9',
+};
 
 const VALUES_TTL_MS = 10 * 60 * 1000; // values move slowly
 const STOCK_TTL_MS = 20 * 1000; // /stock command shouldn't hammer the page
@@ -34,7 +41,7 @@ async function fetchWithRetry(url) {
   for (let attempt = 0; attempt <= RETRIES; attempt++) {
     try {
       const res = await fetch(url, {
-        headers: { 'user-agent': USER_AGENT, accept: 'application/json, text/html' },
+        headers: REQUEST_HEADERS,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!res.ok) throw new ApiError(`HTTP ${res.status} for ${url}`, { status: res.status });
