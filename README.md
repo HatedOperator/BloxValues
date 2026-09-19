@@ -9,7 +9,8 @@ Data comes from the public community site [bloxfruitsvalues.com](https://bloxfru
 - **`/value item`** — value, permanent value, demand, trend, dealer prices and best-use info for any fruit, gamepass or limited item (with autocomplete).
 - **`/values category`** — paginated value list for Fruits, Gamepasses, Limiteds or everything.
 - **`/stock`** — current Normal & Mirage dealer stock with reset countdowns.
-- **Live stock channel** — the bot maintains one always-current stock message in its stock channel (`STOCK_CHANNEL_ID`): on startup and after every rotation it deletes the previous stock post and sends the new one.
+- **Live stock channel** — the bot keeps **two separate live messages** (Normal and Mirage) in its stock channel; each is deleted and resent only when that side rotates.
+- **Rare-fruit alerts** — when a rotation contains rare/good fruit (Legendary/Mythical or ≥1M value), the stock message gets a 🔔 alert line (and an optional role ping via `STOCK_PING_ROLE_ID`). Mythical-tier finds also fire a third 🚨 **ultra-rare alert** message.
 - **`/help`** — quick overview.
 
 Stock rotations (Normal every 4h, Mirage every 2h) are detected automatically (≈ every 30s) — the stock channel's message is deleted and replaced with the new rotation, so there's always exactly one current stock post. Commands are registered globally, so the bot works in any server that invites it.
@@ -38,7 +39,8 @@ Fill in `.env`:
 | --- | --- | --- |
 | `DISCORD_TOKEN` | ✅ | Bot token |
 | `CLIENT_ID` | ✅ | Application ID |
-| `STOCK_CHANNEL_ID` | ➖ | Channel for the live stock message (has a built-in default) |
+| `STOCK_CHANNEL_ID` | ➖ | Channel for the live stock messages (has a built-in default) |
+| `STOCK_PING_ROLE_ID` | ➖ | Role pinged only when a rotation has rare/good fruit |
 | `EMBED_COLOR` | ➖ | Fallback embed accent color |
 | `DATA_DIR` | ➖ | Data directory override (defaults to `<repo>/data`) |
 

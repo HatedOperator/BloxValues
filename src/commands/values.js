@@ -10,6 +10,7 @@ const {
 const api = require('../api');
 const {
   rarityEmoji,
+  fruitEmoji,
   trendEmoji,
   compactValue,
   demandLabel,
@@ -44,11 +45,11 @@ function buildPageEmbed(category, items, page, accentColor) {
   const lines = slice.map((item, i) => {
     const rank = page * PAGE_SIZE + i + 1;
     const parts = [
-      `${rarityEmoji(item.rarity)} **${item.name}** — \`${compactValue(item.value.regular)}\``,
+      `${rarityEmoji(item.rarity)} ${fruitEmoji(item.name)} **${item.name}** — \`${compactValue(item.value.regular)}\``,
     ];
     if (item.value.permanent) parts.push(`perm \`${compactValue(item.value.permanent)}\``);
     const demand = demandLabel(item.demand.regular);
-    if (demand !== 'N/A') parts.push(`demand ${demand}`);
+    if (demand !== 'N/A') parts.push(`🔥 ${demand}`);
     if (item.trend.regular && item.trend.regular !== 'N/A') {
       parts.push(trendEmoji(item.trend.regular));
     }

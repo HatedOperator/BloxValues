@@ -5,6 +5,7 @@ const api = require('../api');
 const {
   rarityColor,
   rarityEmoji,
+  fruitEmoji,
   trendEmoji,
   compactValue,
   withCommas,
@@ -35,7 +36,7 @@ async function execute(interaction, ctx) {
   }
 
   const embed = new EmbedBuilder()
-    .setTitle(`${rarityEmoji(item.rarity)} ${item.name}`)
+    .setTitle(`${fruitEmoji(item.name)} ${item.name} ${rarityEmoji(item.rarity)}`)
     .setURL(item.valueUrl)
  .setColor(rarityColor(item.rarity) ?? ctx.config.embedColor)
     .setAuthor({ name: `Blox Fruits Values • ${item.category}`, url: item.valueUrl });

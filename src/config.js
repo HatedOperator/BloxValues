@@ -16,6 +16,8 @@ const config = {
   clientId: process.env.CLIENT_ID,
   // Channel that always shows the live stock message (delete + resend on updates).
   stockChannelId: process.env.STOCK_CHANNEL_ID || '1549345099543093258',
+  // Optional role pinged ONLY when a stock contains rare/good fruit.
+  stockPingRoleId: process.env.STOCK_PING_ROLE_ID || undefined,
   embedColor: intEnv('EMBED_COLOR', 0x2b2d31) || 0x2b2d31,
   // PaaS-friendly override (e.g. a Railway volume mount); defaults to <repo>/data
   dataDir: process.env.DATA_DIR

@@ -42,8 +42,10 @@ class JsonStore {
 }
 
 const WATCHER_DEFAULTS = Object.freeze({
-  signature: null, // signature of the stock shown in the live message
-  lastMessageId: null, // the live stock message in the channel
+  normalSignature: null, // signature of the posted Normal stock
+  mirageSignature: null, // signature of the posted Mirage stock
+  normalMessageId: null, // live Normal stock message
+  mirageMessageId: null, // live Mirage stock message
   lastAttempt: 0, // epoch ms of last failed refresh (backoff)
 });
 

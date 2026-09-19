@@ -1,15 +1,15 @@
 'use strict';
 
 /**
- * Stock watcher: polls the stock page and maintains a single live stock
- * message in the configured channel. Whenever the bot starts up or the
- * stock rotates, it deletes the previous stock message and posts the
- * current one — so the channel always shows exactly one up-to-date stock.
+ * Stock watcher: maintains TWO live messages in the stock channel — one for
+ * Normal dealer stock, one for Mirage. Each is deleted and resent only when
+ * its own side rotates. Rare finds add an alert line (and an optional role
+ * ping); Mythical-tier finds also trigger a third "ultra-rare" alert message.
  */
 
 const { PermissionFlagsBits } = require('discord.js');
 const api = require('./api');
-const { buildStockEmbeds } = require('./embeds');
+const { buildSideEmbed, buildAlertContent, buildUltimateAlert } = require('./embeds');
 
 const SWEEP_MS = 30_000; // how often we check for new rotations
 const RETRY_BACKOFF_MS = 2 * 60_000; // min wait between failed attempts
@@ -18,34 +18,29 @@ const NEEDED_PERMS =
   PermissionFlagsBits.SendMessages |
   PermissionFlagsBits.EmbedLinks |
   PermissionFlagsBits.ReadMessageHistory;
-const STOCK_TITLES = ['Normal Dealer Stock', 'Mirage Dealer Stock'];
+const SIDE_MARKER = { normal: 'Normal Dealer Stock', mirage: 'Mirage Dealer Stock' };
 
-/** Rotation identity: side reset windows + which fruits are up. */
-function stockSignature(stock) {
-  return JSON.stringify([
-    stock.normal.resetsAt,
-    stock.normal.fruits.map((f) => f.name),
-    stock.mirage.resetsAt,
-    stock.mirage.fruits.map((f) => f.name),
-  ]);
+/** Rotation identity for one side: reset window + which fruits are up. */
+function sideSignature(side) {
+  return JSON.stringify([side.resetsAt, side.fruits.map((f) => f.name)]);
 }
 
-/** A message counts as "the stock post" if the bot sent it with our embeds. */
-function isStockMessage(message, botId) {
+/** A message counts as this side's live post if the bot sent it with that embed. */
+function isSideStockMessage(message, botId, kind) {
   return (
     message.author?.id === botId &&
-    (message.embeds ?? []).some((e) => STOCK_TITLES.some((t) => e.title?.includes(t)))
+    (message.embeds ?? []).some((e) => e.title?.includes(SIDE_MARKER[kind]))
   );
 }
 
-/** Remove the tracked stock message plus any stock posts found in history. */
-async function deletePreviousStock(channel, lastMessageId, botId) {
+/** Remove the tracked message for this side plus any strays found in history. */
+async function deletePreviousStock(channel, lastMessageId, botId, kind) {
   const toDelete = new Set();
   if (lastMessageId) toDelete.add(lastMessageId);
   try {
     const recent = await channel.messages.fetch({ limit: 50 });
     for (const message of recent.values()) {
-      if (isStockMessage(message, botId)) toDelete.add(message.id);
+      if (isSideStockMessage(message, botId, kind)) toDelete.add(message.id);
     }
   } catch (error) {
     console.warn(`[watcher] could not scan channel history: ${error.message}`);
@@ -62,6 +57,37 @@ async function deletePreviousStock(channel, lastMessageId, botId) {
   return removed;
 }
 
+async function refreshSide(channel, ctx, side, kind, state) {
+  const sigKey = `${kind}Signature`;
+  const msgKey = `${kind}MessageId`;
+  const signature = sideSignature(side);
+  if (state[sigKey] === signature) return false; // this side is already current
+
+  const removed = await deletePreviousStock(channel, state[msgKey], channel.client.user.id, kind);
+  const content = buildAlertContent(kind, side.fruits, ctx.config.stockPingRoleId);
+  const message = await channel.send({
+    content,
+    embeds: [buildSideEmbed(side, kind, { footerExtra: 'Live — refreshes automatically' })],
+    allowedMentions: ctx.config.stockPingRoleId ? { parse: ['roles'] } : { parse: [] },
+  });
+  ctx.watcherState.set({ [sigKey]: signature, [msgKey]: message.id });
+
+  const ultimate = buildUltimateAlert(kind, side);
+  if (ultimate) {
+    const ping = ctx.config.stockPingRoleId ? `<@&${ctx.config.stockPingRoleId}> ` : '';
+    await channel.send({
+      content: ping + ultimate.content,
+      embeds: ultimate.embeds,
+      allowedMentions: ctx.config.stockPingRoleId ? { parse: ['roles'] } : { parse: [] },
+    });
+  }
+
+  console.log(
+    `[watcher] ${kind} refreshed in #${channel.name} (removed ${removed} old post(s), new message ${message.id}${ultimate ? ', ultra-rare alert sent' : ''})`,
+  );
+  return true;
+}
+
 async function sweep(client, ctx) {
   const state = ctx.watcherState.get();
   const now = Date.now();
@@ -76,8 +102,10 @@ async function sweep(client, ctx) {
   }
   if (stock.stale) return; // upstream not confident yet — try next sweep
 
-  const signature = stockSignature(stock);
-  if (signature === state.signature) return; // stock post is already current
+  // Nothing to do if both sides already match what's posted
+  if (state.normalSignature === sideSignature(stock.normal) && state.mirageSignature === sideSignature(stock.mirage)) {
+    return;
+  }
 
   const channel = client.channels.cache.get(ctx.config.stockChannelId);
   if (!channel) {
@@ -94,17 +122,11 @@ async function sweep(client, ctx) {
   }
 
   try {
-    const removed = await deletePreviousStock(channel, state.lastMessageId, client.user.id);
-    const message = await channel.send({
-      embeds: buildStockEmbeds(stock, { footerExtra: 'Live — refreshes automatically' }),
-      allowedMentions: { parse: [] },
-    });
-    ctx.watcherState.set({ signature, lastMessageId: message.id, lastAttempt: 0 });
-    console.log(
-      `[watcher] stock refreshed in #${channel.name} (removed ${removed} old post(s), new message ${message.id})`,
-    );
+    await refreshSide(channel, ctx, stock.normal, 'normal', state);
+    await refreshSide(channel, ctx, stock.mirage, 'mirage', state);
+    ctx.watcherState.set({ lastAttempt: 0 });
   } catch (error) {
-    console.error(`[watcher] failed to refresh stock message: ${error.message}`);
+    console.error(`[watcher] failed to refresh stock messages: ${error.message}`);
     ctx.watcherState.set({ lastAttempt: now });
   }
 }
@@ -112,7 +134,7 @@ async function sweep(client, ctx) {
 function startStockWatcher(client, ctx) {
   const run = () => sweep(client, ctx).catch((e) => console.error('[watcher]', e));
   console.log(
-    `[watcher] started — maintaining live stock in channel ${ctx.config.stockChannelId}, checking every ${SWEEP_MS / 1000}s`,
+    `[watcher] started — live Normal & Mirage stock in channel ${ctx.config.stockChannelId}, checking every ${SWEEP_MS / 1000}s`,
   );
   run();
   const timer = setInterval(run, SWEEP_MS);
@@ -120,4 +142,4 @@ function startStockWatcher(client, ctx) {
   return timer;
 }
 
-module.exports = { startStockWatcher, stockSignature };
+module.exports = { startStockWatcher, sideSignature };
