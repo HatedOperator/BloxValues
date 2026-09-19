@@ -9,10 +9,10 @@ Data comes from the public community site [bloxfruitsvalues.com](https://bloxfru
 - **`/value item`** — value, permanent value, demand, trend, dealer prices and best-use info for any fruit, gamepass or limited item (with autocomplete).
 - **`/values category`** — paginated value list for Fruits, Gamepasses, Limiteds or everything.
 - **`/stock`** — current Normal & Mirage dealer stock with reset countdowns.
-- **`/stocksettings`** — configure automatic stock updates per server (channel, mention role, check interval, startup post). Needs **Manage Server**.
+- **Live stock channel** — the bot maintains one always-current stock message in its stock channel (`STOCK_CHANNEL_ID`): on startup and after every rotation it deletes the previous stock post and sends the new one.
 - **`/help`** — quick overview.
 
-Stock rotations (Normal every 4h, Mirage every 2h) are detected automatically and posted into each server's configured channel — with fruit values, demand, trends and images in rich embeds. Commands are registered globally, so the bot works in any server that invites it.
+Stock rotations (Normal every 4h, Mirage every 2h) are detected automatically (≈ every 30s) — the stock channel's message is deleted and replaced with the new rotation, so there's always exactly one current stock post. Commands are registered globally, so the bot works in any server that invites it.
 
 ## Setup
 
@@ -38,10 +38,9 @@ Fill in `.env`:
 | --- | --- | --- |
 | `DISCORD_TOKEN` | ✅ | Bot token |
 | `CLIENT_ID` | ✅ | Application ID |
+| `STOCK_CHANNEL_ID` | ➖ | Channel for the live stock message (has a built-in default) |
 | `EMBED_COLOR` | ➖ | Fallback embed accent color |
 | `DATA_DIR` | ➖ | Data directory override (defaults to `<repo>/data`) |
-
-All stock-update settings (channel, mention role, check interval, post-on-startup) are configured **per server in Discord** with `/stocksettings` — no environment variables needed.
 
 ### 3. Register commands & run
 
@@ -50,7 +49,7 @@ npm run deploy   # register slash commands globally (once, and after adding new 
 npm start        # start the bot
 ```
 
-Each server then configures its own updates with `/stocksettings set channel:#your-channel [mention_role:@role] [poll_seconds:60] [post_on_startup:true]`, checks them with `/stocksettings view`, and disables them with `/stocksettings reset`.
+The bot keeps the live stock message updated in the channel set by `STOCK_CHANNEL_ID` (defaults to `1549345099543093258`) — no in-Discord setup needed.
 
 ## Deploying to Railway
 
@@ -61,7 +60,7 @@ The repo is Railway-ready (`railway.json` sets the start command, and slash comm
    - `DISCORD_TOKEN` (required)
    - `CLIENT_ID` (required)
    - `EMBED_COLOR` / `DATA_DIR` if you want to customize (see the table above)
-3. *(Recommended)* Attach a **Volume** to the service and mount it at `/data`, then set `DATA_DIR=/data`. This persists per-server `/stocksettings` configurations and the watcher state across deploys. Without a volume the bot still works — servers just get a fresh stock post after every redeploy.
+3. *(Recommended)* Attach a **Volume** to the service and mount it at `/data`, then set `DATA_DIR=/data`. This persists the watcher state across deploys. Without a volume the bot still works — it just does a full delete-and-resend of the stock message after every redeploy (which it would do anyway on startup).
 4. Railway auto-detects Node (Nixpacks), runs `npm install`, and starts the bot with `npm run deploy; npm start`. If the process crashes, Railway restarts it automatically.
 
 ## Running with Docker

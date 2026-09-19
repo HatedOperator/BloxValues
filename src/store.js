@@ -41,82 +41,25 @@ class JsonStore {
   }
 }
 
-const GUILD_DEFAULTS = Object.freeze({
-  channelId: null,
-  mentionRoleId: null,
-  pollSeconds: 60,
-  postOnStartup: true,
-});
-
-/**
- * Per-guild stock update configuration, managed in Discord via /stocksettings.
- * Migrates the old `{ "guild:<id>": "<channelId>" }` shape automatically.
- */
-class GuildSettings {
-  constructor(dataDir) {
-    this.store = new JsonStore(path.join(dataDir, 'guild-settings.json'));
-    this.#migrate();
-  }
-
-  #migrate() {
-    for (const [key, value] of Object.entries({ ...this.store.data })) {
-      if (key.startsWith('guild:') && typeof value === 'string') {
-        this.store.delete(key);
-        this.store.set(key.slice(6), { ...GUILD_DEFAULTS, channelId: value });
-      }
-    }
-  }
-
-  /** Effective settings for a guild (defaults merged in). */
-  get(guildId) {
-    const saved = this.store.get(guildId, {});
-    return { ...GUILD_DEFAULTS, ...saved };
-  }
-
-  /** Merge a partial update (only provided fields change). */
-  update(guildId, patch) {
-    this.store.set(guildId, { ...this.get(guildId), ...patch });
-  }
-
-  reset(guildId) {
-    this.store.delete(guildId);
-  }
-
-  /** All configured guilds: { guildId: settings }. */
-  all() {
-    const out = {};
-    for (const [guildId, saved] of Object.entries(this.store.data)) {
-      if (saved && typeof saved === 'object' && saved.channelId) {
-        out[guildId] = { ...GUILD_DEFAULTS, ...saved };
-      }
-    }
-    return out;
-  }
-}
-
 const WATCHER_DEFAULTS = Object.freeze({
-  signature: null, // last stock rotation delivered to this guild
-  at: 0, // epoch ms of that delivery
-  lastAttempt: 0, // epoch ms of last failed attempt (backoff)
+  signature: null, // signature of the stock shown in the live message
+  lastMessageId: null, // the live stock message in the channel
+  lastAttempt: 0, // epoch ms of last failed refresh (backoff)
 });
 
-/** Per-guild watcher progress, so restarts don't double-post rotations. */
+/** Persists the live stock message state across restarts. */
 class WatcherState {
   constructor(dataDir) {
     this.store = new JsonStore(path.join(dataDir, 'watcher-state.json'));
   }
 
-  getGuild(guildId) {
-    return { ...WATCHER_DEFAULTS, ...this.store.get(guildId, {}) };
+  get() {
+    return { ...WATCHER_DEFAULTS, ...this.store.get('stock') };
   }
 
-  setGuild(guildId, patch) {
-    this.store.set(guildId, { ...this.getGuild(guildId), ...patch });
-  }
-
-  resetGuild(guildId) {
-    this.store.delete(guildId);
+  set(patch) {
+    this.store.set('stock', { ...this.get(), ...patch });
   }
 }
 
-module.exports = { JsonStore, GuildSettings, WatcherState, GUILD_DEFAULTS };
+module.exports = { JsonStore, WatcherState };

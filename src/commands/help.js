@@ -25,14 +25,9 @@ async function execute(interaction, ctx) {
       },
       { name: '/stock', value: 'Current Normal & Mirage dealer stock with reset countdown.' },
       {
-        name: '/stocksettings',
+        name: 'Live stock channel',
         value:
-          'Configure automatic stock updates for this server — channel, mention role, check interval and startup post (Manage Server).',
-      },
-      {
-        name: 'Automatic updates',
-        value:
-          'Every rotation the bot posts both stocks into the configured channel — set it up per server with `/stocksettings set channel:#your-channel`.',
+          'The bot keeps one up-to-date stock message in its stock channel — refreshed automatically after every Normal (4h) and Mirage (2h) rotation.',
       },
     )
     .setFooter({ text: 'Data: bloxfruitsvalues.com • Not affiliated with Gamer Robot' });

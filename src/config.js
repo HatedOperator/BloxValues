@@ -14,6 +14,8 @@ function intEnv(name, fallback) {
 const config = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.CLIENT_ID,
+  // Channel that always shows the live stock message (delete + resend on updates).
+  stockChannelId: process.env.STOCK_CHANNEL_ID || '1549345099543093258',
   embedColor: intEnv('EMBED_COLOR', 0x2b2d31) || 0x2b2d31,
   // PaaS-friendly override (e.g. a Railway volume mount); defaults to <repo>/data
   dataDir: process.env.DATA_DIR

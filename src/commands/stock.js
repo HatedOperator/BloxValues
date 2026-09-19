@@ -12,7 +12,7 @@ async function execute(interaction, ctx) {
   await interaction.deferReply();
   const stock = await api.fetchStock();
   const embeds = buildStockEmbeds(stock, {
-    footerExtra: 'Auto-updates: /stocksettings set channel:#your-channel',
+    footerExtra: 'A live version of this is kept updated in the stock channel',
   });
   return interaction.editReply({ embeds });
 }

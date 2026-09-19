@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client, Collection, GatewayIntentBits, Events } = require('discord.js');
 const { config, validate } = require('./config');
-const { GuildSettings, WatcherState } = require('./store');
+const { WatcherState } = require('./store');
 const { startStockWatcher } = require('./watcher');
 
 try {
@@ -19,7 +19,6 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 // Shared context handed to every command.
 const ctx = {
   config,
-  guildSettings: new GuildSettings(config.dataDir),
   watcherState: new WatcherState(config.dataDir),
 };
 
